@@ -1,0 +1,4 @@
+// Your Xively key to let you upload data
+char xivelyKey[] = "REPLACE_THIS_WITH_YOUR_XIVELY_KEY";
+
+const unsigned long xivelyFeedId = REPLACE_THIS_WITH_YOUR_XIVELY_FEED_ID;
