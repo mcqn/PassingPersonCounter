@@ -7,7 +7,9 @@
 #include <SPI.h>
 #include <GSM.h>
 #include <HttpClient.h>
+#include <Time.h>
 #include <Xively.h>
+#include <FreeMemory.h>
 
 //============================================================
 // IMPORTANT!
@@ -26,34 +28,84 @@
 #define GPRS_LOGIN     ""    // replace with your GPRS login
 #define GPRS_PASSWORD  "" // replace with your GPRS password
 
+#define DEBUG 0
+
+// How long each reading set should span (IN MINUTES!)
+const unsigned long kReadingInterval =15UL;
+// How many readings we should take before we report them to the Internet
+const int kReadingsPerReport = 8;
+
+// FIXME
+time_t readingsTime = 1401633365;
+
 // Define the strings for our datastream IDs
 char sensorId[] = "Movement";
 char batteryId[] = "Battery";
 char chargingId[] = "Charge";
-XivelyDatastream datastreams[] = {
-  XivelyDatastream(batteryId, strlen(batteryId), DATASTREAM_FLOAT),
-  XivelyDatastream(chargingId, strlen(chargingId), DATASTREAM_INT),
-  XivelyDatastream(sensorId, strlen(sensorId), DATASTREAM_INT)
+char freeMemId[] = "FreeRAM";
+XivelyDatapoint batteryReadings[kReadingsPerReport] = {
+  XivelyDatapoint(DATASTREAM_FLOAT),
+  XivelyDatapoint(DATASTREAM_FLOAT),
+  XivelyDatapoint(DATASTREAM_FLOAT),
+  XivelyDatapoint(DATASTREAM_FLOAT),
+  XivelyDatapoint(DATASTREAM_FLOAT),
+  XivelyDatapoint(DATASTREAM_FLOAT),
+  XivelyDatapoint(DATASTREAM_FLOAT),
+  XivelyDatapoint(DATASTREAM_FLOAT)
+};
+XivelyDatapoint chargingReadings[kReadingsPerReport] = {
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT)
+};
+XivelyDatapoint sensorReadings[kReadingsPerReport] = {
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT)
+};
+XivelyDatapoint freeMemReadings[kReadingsPerReport] = {
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT),
+  XivelyDatapoint(DATASTREAM_INT)
+};
+XivelyHistoricDatastream datastreams[] = {
+  XivelyHistoricDatastream(batteryId, strlen(batteryId), DATASTREAM_FLOAT, batteryReadings, kReadingsPerReport),
+  XivelyHistoricDatastream(chargingId, strlen(chargingId), DATASTREAM_INT, chargingReadings, kReadingsPerReport),
+  XivelyHistoricDatastream(sensorId, strlen(sensorId), DATASTREAM_INT, sensorReadings, kReadingsPerReport),
+  XivelyHistoricDatastream(freeMemId, strlen(freeMemId), DATASTREAM_INT, freeMemReadings, kReadingsPerReport)
 };
 // Finally, wrap the datastreams into a feed
-XivelyFeed feed(xivelyFeedId, datastreams, 3 /* number of datastreams */);
+XivelyHistoricFeed feed(xivelyFeedId, datastreams, 4 /* number of datastreams */);
 
 volatile int movementCount =0;
 volatile unsigned long movementStart =0;
 int lastMovementCount =0;
 unsigned long lastMovementTime =0;
-unsigned long lastReportTime =0;
+unsigned long lastReadingTime =0;
 
 // How long it'd take one person to pass by the sensor
 const unsigned long kPassingTime =30*1000;
 
-// How long we should sleep between reporting results (IN MINUTES!)
-const unsigned long kReportInterval =2*60UL;
 // boilerplate for low-power waiting
 ISR(WDT_vect) { Sleepy::watchdogEvent(); }
 
 void setup() {
-#if 0
+#if DEBUG
   Serial.begin(9600);
   while (!Serial) {
     ; // wait for serial port to connect. Needed for Leonardo only
@@ -82,23 +134,45 @@ void loop() {
   // loseSomeTime can only sleep for up to just over a minute (65535
   // milliseconds) so to get decent sleep intervals, we'll loop through
   // a number of times
-  for (int i =0; i < kReportInterval; i++) {
-    lastReportTime = millis();
-    while (Sleepy::loseSomeTime((60*1000)-(millis()-lastReportTime)) == 0)
-    {
-      // It was interrupted by the movement trigger, go back to sleep
-#if 0
-      digitalWrite(4, HIGH);
-      delay(300);
-      digitalWrite(4, LOW);
+  for (int readingIdx = 0; readingIdx < kReadingsPerReport; readingIdx++)
+  {
+    for (int i =0; i < kReadingInterval; i++) {
+      lastReadingTime = millis();
+#if DEBUG
+      delay(60000);
+#else
+      while (Sleepy::loseSomeTime((60*1000)-(millis()-lastReadingTime)) == 0)
+      {
+        // It was interrupted by the movement trigger, go back to sleep
+      }
 #endif
+    }
+    // Store these readings
+    // Record what our battery level is now too  
+    // A4 is measuring the mid-point of a 100k/100k voltage divider
+    batteryReadings[readingIdx].setFloat(analogRead(A4)*2.0*3.3/1023.0);
+    // And whether or not we're charging
+    chargingReadings[readingIdx].setInt(analogRead(A5));
+    // Plus how much memory is free (so we'll maybe spot memory leaks)
+    freeMemReadings[readingIdx].setInt(FreeRam());
+    
+    sensorReadings[readingIdx].setInt(movementCount);
+    movementCount = 0;
+    for (int i=0; i < sensorReadings[readingIdx].getInt(); i++)
+    {
+      digitalWrite(13, LOW);
+      delay(300);
+      digitalWrite(13, HIGH);
+      delay(200);
     }
   }
 
   digitalWrite(13, LOW);
-  delay(1000);
+
+#if 1
+  reportMovementCount();
   digitalWrite(13, HIGH);
-  
+#else
   if (movementCount > lastMovementCount)
   {
     int diff = movementCount - lastMovementCount;
@@ -124,6 +198,7 @@ void loop() {
     lastMovementTime = movementTime;
 #endif
   }
+#endif
 }
 
 void movementDetected()
@@ -153,13 +228,16 @@ void movementDetected()
   }
 }
 
-void reportMovementCount(int aCount)
+void reportMovementCount()
 {
   GSM gsmAccess;     // include a 'true' parameter to enable debugging
   GPRS gprs;
   GSMClient client;
   XivelyClient xivelyclient(client);
 
+#if DEBUG
+  Serial.println("reporting movement count");
+#endif
   // connection state
   boolean notConnected = true;
   // After starting the modem with GSM.begin()
@@ -176,15 +254,30 @@ void reportMovementCount(int aCount)
       digitalWrite(4, LOW);
     }
   }
+
+#if DEBUG
+  Serial.println("connected");
+#endif
+  // Set current value to whatever the last reading was
+  datastreams[0].setFloat(batteryReadings[kReadingsPerReport-1].getFloat());
+  datastreams[1].setInt(chargingReadings[kReadingsPerReport-1].getInt());
+  datastreams[2].setInt(sensorReadings[kReadingsPerReport-1].getInt());
+  datastreams[3].setInt(freeMemReadings[kReadingsPerReport-1].getInt());
   
-  // Record what our battery level is now too  
-  // A4 is measuring the mid-point of a 100k/100k voltage divider
-  datastreams[0].setFloat(analogRead(A4)*2.0*3.3/1023.0);
-  // And whether or not we're charging
-  datastreams[1].setInt(analogRead(A5));
+  // Sort out the times FIXME!!!
+  for (int idx = 0; idx < kReadingsPerReport; idx++)
+  {
+    batteryReadings[idx].setTime(readingsTime);
+    chargingReadings[idx].setTime(readingsTime);
+    sensorReadings[idx].setTime(readingsTime);
+    freeMemReadings[idx].setTime(readingsTime);
+    readingsTime += kReadingInterval*60;
+  }
   
-  datastreams[2].setInt(aCount); 
-  
+#if DEBUG
+  Serial.println("putting data");
+  Serial.println(feed);
+#endif
   if (xivelyclient.put(feed, xivelyKey) < 0)
   {
     // Something went wrong
@@ -196,6 +289,9 @@ void reportMovementCount(int aCount)
       delay(200);
     }
   }
+#if DEBUG
+  Serial.println("finished putting data");
+#endif
 
   while ( gsmAccess.shutdown() != 1 ) {
     delay (1000);
