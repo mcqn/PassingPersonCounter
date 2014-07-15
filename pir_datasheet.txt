@@ -1,0 +1,11 @@
+Not really a datasheet, but the nearest I've got to one.
+
+Time pot:
+- fully clockwise - pin is held high for a long time
+- fully anti-clockwise - pin is held high for ~5 seconds
+
+Sensitivity pot:
+- fully clockwise - most sensitive
+- fully anti-clockwise - least sensitive
+
+
