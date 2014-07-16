@@ -29,11 +29,10 @@
 #define GPRS_PASSWORD  "" // replace with your GPRS password
 
 #define DEBUG 0
-#if DEBUG
+
 // The Mega-Hera200 doesn't expose Serial to the expansion connector
 // but Serial3 is on PJ0 and PJ1
 #define LOG_SERIAL_PORT Serial3
-#endif
 
 // How long each reading set should span (IN MINUTES!)
 const unsigned long kReadingInterval =15UL;
@@ -181,6 +180,9 @@ void loop() {
     }
     // Record when we took these readings
     time_t readingsTime = now();
+    batteryReadings[readingIdx].setTime(readingsTime);
+    chargingReadings[readingIdx].setTime(readingsTime);
+    sensorReadings[readingIdx].setTime(readingsTime);
 #if DEBUG
     LOG_SERIAL_PORT.println("Readings...");
     LOG_SERIAL_PORT.print("Time: ");
@@ -191,10 +193,8 @@ void loop() {
     LOG_SERIAL_PORT.println(chargingReadings[readingIdx].getInt());
     LOG_SERIAL_PORT.print("Movement: ");
     LOG_SERIAL_PORT.println(sensorReadings[readingIdx].getInt());
+    LOG_SERIAL_PORT.println(feed);
 #endif
-    batteryReadings[readingIdx].setTime(readingsTime);
-    chargingReadings[readingIdx].setTime(readingsTime);
-    sensorReadings[readingIdx].setTime(readingsTime);
   }
 
   digitalWrite(kReportingLED, LOW);
@@ -244,7 +244,6 @@ void movementDetected()
     asm volatile ("  jmp 0");  
   }
   
-  // The PIR sensor is active low
   if (digitalRead(kPIRSensorPin))
   {
     digitalWrite(kActivityDetectedLED, LOW);
@@ -255,16 +254,20 @@ void movementDetected()
     digitalWrite(kActivityDetectedLED, HIGH);
     // Find out how long we've been active, and use that to guide
     // how many people we think have passed
-    movementCount++;
-    if (millis()-movementStart < 10*60*1000UL)
+    // But really short readings will be the sensor lying to us
+    if (millis()-movementStart > 3300)
     {
-      movementCount += (millis()-movementStart)/kPassingTime;
-    }
-    else
-    {
-      // it's over 10 minutes, reckon it's someone loitering
-      // Probably at least two people then :-)
       movementCount++;
+      if (millis()-movementStart < 10*60*1000UL)
+      {
+        movementCount += (millis()-movementStart)/kPassingTime;
+      }
+      else
+      {
+        // it's over 10 minutes, reckon it's someone loitering
+        // Probably at least two people then :-)
+        movementCount++;
+      }
     }    
   }
 }
@@ -290,11 +293,13 @@ void findTime()
   {
     // The modem is reporting a time from the 2000s, which means
     // it's not the right time
+#if !DEBUG
+    LOG_SERIAL_PORT.begin(9600);
+#endif
     
     // Try to set it from the network
     if (!modem.setTimeFromNetwork(1*60*1000UL))
     {
-#if DEBUG
       LOG_SERIAL_PORT.println("Didn't get the time signal from the network");
       // Give the user a window to set it via the serial monitor
       LOG_SERIAL_PORT.println("Enter the time (in seconds since Jan 1 1970):");
@@ -307,16 +312,18 @@ void findTime()
         // We've been given a time, so let's use it
         modem.setTime(timeToString(now()));
       }
-#endif
     }
   }
   // Set the Time library time from the modem
   String modemTime = modem.getTime();
-#if DEBUG
   LOG_SERIAL_PORT.print("The time is ");
   LOG_SERIAL_PORT.println(modemTime);
-#endif
   setTimeFromModem(modemTime);
+  LOG_SERIAL_PORT.print("The internal time is ");
+  LOG_SERIAL_PORT.println(now());
+#if !DEBUG
+  LOG_SERIAL_PORT.end();
+#endif
 }
 
 String timeToString(time_t aTime)
