@@ -43,6 +43,10 @@ const int kReadingsPerReport = 8;
 const int kPIRSensorPin = 20;
 const int kPIRSensorInterrupt = 3;
 
+// The minimum time that the PIR sensor reports that we'll count as a
+// true reading.  Below that, it's generally false positives
+const int kMinPIRReadingTime = 4430;
+
 #ifdef SERIAL_NUMBER
 const int kActivityDetectedLED = 22;
 const int kReportingLED = 26;
@@ -255,7 +259,7 @@ void movementDetected()
     // Find out how long we've been active, and use that to guide
     // how many people we think have passed
     // But really short readings will be the sensor lying to us
-    if (millis()-movementStart > 3300)
+    if (millis()-movementStart > kMinPIRReadingTime)
     {
       movementCount++;
       if (millis()-movementStart < 10*60*1000UL)
