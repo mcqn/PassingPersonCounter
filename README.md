@@ -17,6 +17,8 @@ This code requires a couple of libraries not part of the standard Arduino distri
  * [HttpClient](https://github.com/amcewen/HttpClient) (used by the Xively Arduino library)
  * [JeeLib](https://github.com/jcw/jeelib) (for the low-power sleep functionality)
 
+It also expects some changes to the GSM library to be able to (try to) retrieve the current date/time from the network.  See the "gsm-network-time" branch on [my fork of Arduino](https://github.com/amcewen/Arduino/tree/gsm-network-time).
+
 ### Install
 
  1. Install the additional Arduino libraries listed above
