@@ -1,0 +1,8 @@
+# File to store info that changes depending on where you deploy the code
+#
+
+FEED_URL = "https://api.xively.com/v2/feeds/YOUR_FEED_ID_HERE.json"
+
+# The place to store the output HTML
+OUTPUT_HTML_FILE = "Visitors.html"
+
